@@ -1,0 +1,660 @@
+---
+editor_options:
+  markdown:
+    wrap: 82
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(rmdformats)
+
+## Global options
+options(max.print = "75")
+knitr::opts_chunk$set(
+  echo = TRUE, cache = FALSE, prompt = FALSE,
+  tidy = FALSE, comment = NA,
+  message = FALSE, warning = FALSE
+)
+opts_knit$set(width = 75)
+```
+
+# Introduction
+The dataset is from the Heart and Estrogen/Progestin Replacement Study (HERS). The study was a randomized, placebo-controlled, double-blind clinical trial. Daily hormone therapy of estrogen and progestin was administered during the study to a cohort of postmenopausal women with an intact uterus and confirmed Coronary Heart Disease (CHD).
+
+According to the [paper](https://doi.org/10.1001/jama.280.7.605) the context and the objective of the study are as follows:
+
+> **Context:**
+> Observational studies have found lower rates of Coronary Heart Disease (CHD) in postmenopausal women who take estrogen than in women who do not BUT there is no confirmation via clinical trials.
+
+> **Objective:**
+> To determine if estrogen plus progestin therapy alters the risk for CHD events in postmenopausal women with established coronary disease.
+
+Our version of the study's dataset is limited in that:
+
+- It had only one year of follow-up while the study ran an annual follow-up on the subjects for 5 years. 
+
+This informed our decision to do Exploratory Data Analysis (EDA) and simple statistical analysis on the data set.
+
+
+# Research Question & Hypotheses
+
+**Research Question**:
+
+-  Were there any changes in the parameters measured between the hormone therapy and placebo group?
+
+**Null Hypothesis ($H_0$)**
+
+- There were no significant changes in the measured parameters between both groups.
+
+**Alternative Hypothesis ($H_1$)** 
+
+- There were significant changes in the measured parameters between both groups.
+
+# Data Cleaning, Exploration and Wrangling
+
+The data consists of 2763 rows and 37 variables.
+
+- Nineteen (19) variables were measured only at baseline (on enrolment).
+
+- Nine (9) other variables were measured at baseline (on enrolment) and during the 1st year of follow-up (i.e., 9 * 2 = 18). 
+
+- This makes a total of 37 variables. 
+
+```{r, echo=TRUE, eval=TRUE}
+#READING THE .csv file form the current working directory into a new variable called hers
+hers <- read.csv("./hersdataset.csv")
+
+#INTROUCING hers and getting value of missing rows
+intro <- DataExplorer::introduce(hers)
+intro$rows - intro$complete_rows
+
+```
+
+There are 188 rows (6.8%) with missing values. We choose to eliminate them.
+
+```{r, echo=TRUE, eval=TRUE}
+#CREATING A VARIABLE FOR ROWS WITHOUT MISSING VALUES AND PRINTING ITS DIMENSION
+hers_complete_rows <- hers[rowSums(is.na(hers))==0,]
+dim(hers_complete_rows)
+```
+
+
+```{r, echo=TRUE, eval=TRUE}
+library(tidyverse)
+#CREATING CONTROL AND TREATMENT VARIABLES 
+#BY FILTERING FOR "placebo" Description in Hormone Therapy (HT) of complete rows
+hers_control <- hers_complete_rows %>% filter(HT == "placebo")
+hers_treatment <- hers_complete_rows %>% filter(HT != "placebo")
+dim(hers_control)
+dim(hers_treatment)
+```
+
+We see that there are 1306 rows
+
+After removal of missing values, we have 1306 rows for placebo and 1269
+rows for hormone therapy, making it 2575 complete rows in the entire dataset.
+
+The following table shows descriptive statistics of the numerical variables.
+
+```{r, echo=TRUE, eval=TRUE}
+#SELECTING NUMERICAL VALUES AND FROM THE COMPLETE ROWS
+#ROUNDING THEM TO TWO DECIMALS
+hers_complete_rows %>%
+  select(
+    age, tchol, tchol1, TG, TG1, HDL, HDL1, LDL, LDL1, 
+    glucose, glucose1, weight, weight1, WHR, WHR1, BMI, BMI1) %>%
+  psych::describe() %>% round(2) %>% select(-vars, -n) %>% kable()
+```
+
+There are unrealistic values such as (LDL1 \< 0) or (TG1 \> 1000), so we choose to eliminate them.
+
+```{r}
+#ELIMINATING THE ROW(S) WITH LESS THAN 0 LDL AND GREATER THAN 1000 TRIGLYCERIDE.
+hers_complete_rows <- hers_complete_rows %>% filter(LDL1 > 0) %>% filter(TG1 < 1000)
+hers_control <- hers_complete_rows %>% filter(HT == "placebo")
+hers_treatment <- hers_complete_rows %>% filter(HT != "placebo")
+dim(hers_control)
+dim(hers_treatment)
+```
+After removal of unrealistic values, we have 1306 rows for placebo and 1268
+rows for hormone therapy. This confirms that both values belong to the same subject.
+
+***
+
+The following table shows the **updated** descriptive statistics of the numerical variables.
+```{r}
+#SELECTING NUMERICAL VALUES AND FROM THE COMPLETE ROWS
+#ROUNDING THEM TO TWO DECIMALS
+hers_complete_rows %>%
+  select(
+    age, tchol, tchol1, TG, TG1, HDL, HDL1, LDL, LDL1, 
+    glucose, glucose1, weight, weight1, WHR, WHR1, BMI, BMI1) %>%
+  psych::describe() %>% round(2) %>% select(-vars, -n) %>% kable()
+```
+
+***
+
+The following table shows the updated descriptive statistics of the numerical variables for the **placebo** cohort.
+```{r}
+#SELECTING NUMERICAL VALUES AND FROM THE PLACEBO GROUP
+#ROUNDING THEM TO TWO DECIMALS
+hers_control %>%
+  select(
+    age, tchol, tchol1, TG, TG1, HDL, HDL1, LDL, LDL1, 
+    glucose, glucose1, weight, weight1, WHR, WHR1, BMI, BMI1) %>%
+  psych::describe() %>% round(2) %>% select(-vars, -n) %>% kable()
+```
+
+*** 
+
+The following table shows the updated descriptive statistics of the numerical variables for the **hormone** therapy cohort.
+```{r}
+#SELECTING NUMERICAL VALUES AND FROM THE HORMONE THERAPY GROUP
+#ROUNDING THEM TO TWO DECIMALS
+hers_treatment %>%
+  select(
+    age, tchol, tchol1, TG, TG1, HDL, HDL1, LDL, LDL1, 
+    glucose, glucose1, weight, weight1, WHR, WHR1, BMI, BMI1) %>%
+  psych::describe() %>% round(2) %>% select(-vars, -n) %>% kable()
+```
+
+***
+
+Age distribution:
+
+```{r, fig.cap= "The figure above is a Histogram showing the age distribution."}
+ggplot(hers_complete_rows) + 
+  geom_histogram(mapping=aes(age), binwidth = 5) 
+```
+- The histogram above shows that majority of the subjects were older women, proving that the subjects were likely of post-menopausal age.
+
+
+Age distribution of cohorts:
+
+```{r, fig.cap= "The figure above is a Histogram showing the age distribution bewteen cohorts."}
+ggplot(hers_complete_rows) + 
+  geom_histogram(mapping=aes(age), binwidth = 5) + 
+  facet_wrap(~HT)
+```
+
+- The histogram above shows that there was a somewhat similar distribution of the age between both the hormone therapy and placebo cohorts.
+
+***
+
+Next, we do some bar chats for the Categorical Variables to compare their distribution between both study groups.
+```{r, fig.cap= "The figure above is a Boxplot showing the smoking distribution between cohorts."}
+# Barcharts for Categorical variables
+# smoking, exercise, drinkany, raceth, medcond, htnmeds, statins, diabetes, dmpills, insulin
+ggplot() + 
+  geom_bar(data = hers_complete_rows, mapping = aes(y=smoking)) + facet_wrap(~ HT)
+```
+
+
+```{r, fig.cap= "The figure above is a Boxplot showing the distribution of subjects that exercise often between cohorts."}
+ggplot() + 
+  geom_bar(data = hers_complete_rows, mapping = aes(y=exercise)) + facet_wrap(~ HT)
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the distribution of subjects who drink between cohorts."}
+ggplot() + 
+  geom_bar(data = hers_complete_rows, mapping = aes(y=drinkany)) + facet_wrap(~ HT)
+``` 
+
+
+```{r, fig.cap= "The figure above is a Boxplot showing the racial distribution between cohorts."}
+ggplot() + 
+  geom_bar(data = hers_complete_rows, mapping = aes(y=raceth)) + facet_wrap(~ HT)
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the  distribution of subjects diagnosed with a medical condition between cohorts."}
+ggplot() + 
+  geom_bar(data = hers_complete_rows, mapping = aes(y=medcond)) + facet_wrap(~ HT)
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the distribution of Statin usage between cohorts."}
+ggplot() + 
+  geom_bar(data = hers_complete_rows, mapping = aes(y=statins)) + facet_wrap(~ HT)
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the distribution of diabetic subjects between cohorts."}
+ggplot() + 
+  geom_bar(data = hers_complete_rows, mapping = aes(y=diabetes)) + facet_wrap(~ HT)
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the  distribution of Diabetes pill usage between cohorts."}
+ggplot() + 
+  geom_bar(data = hers_complete_rows, mapping = aes(y=dmpills)) + facet_wrap(~ HT)
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the distribution of insulin usage between cohorts."}
+ggplot() + 
+  geom_bar(data = hers_complete_rows, mapping = aes(y=insulin)) + facet_wrap(~ HT)
+```
+
+The bar charts show that there was an even distribution of subjects based on their categorical variables between both groups. 
+As an example, the distribution implies that there was an equal amount of smokers/non-smokers in the Hormone Therapy group and the Placebo Group.
+
+***
+
+Below is a summary of the average values of all numerical variables.
+```{r summary-table, fig.cap= "Below is a summary of the average value of all numerical variables, and the standard deviations between the chort groups."}
+dtf <- hers_complete_rows %>%
+  group_by(HT) %>%
+  summarise_if(is.numeric, mean) %>%
+  select(-medcond, -age10, -SBP, -DBP)
+
+dtf2 <- hers_complete_rows %>%
+  group_by(HT) %>%
+  summarise_if(is.numeric, sd) %>%
+  select(-medcond, -age10, -SBP, -DBP)
+
+dtf_colnames <- colnames(dtf)[-1]
+
+dtfX <- dtf %>% pivot_longer(dtf_colnames, names_to="Variable", values_to="mean") %>% 
+  pivot_wider(names_from=HT, values_from=mean)
+dtfX2 <- dtf2 %>% pivot_longer(dtf_colnames, names_to="Variable", values_to="mean") %>% 
+  pivot_wider(names_from=HT, values_from=mean)
+colnames(dtfX2) <- c("Variable", "hormone Therapy (sd)", "placebo (sd)")
+dtfY <- cbind(dtfX[1], dtfX[2], dtfX2[2], dtfX[3], dtfX2[3])
+
+dtfY %>% mutate(across(2:5,round,3)) %>% kable()
+```
+The table above shows that (on the average) the women had a BMI of 28. This implies that they were mostly overweight and because overweight persons are prone to CHD, it is clear that the subjects comply with the ideal subject criteria.
+
+***
+We move on to Box plots for the Numerical Variables.
+```{r}
+#FUNCTION FOR BOXPLOT OF BOTH COHORTS
+#TO COMPARE THE OUTCOME OF A VARIABLE BEFORE AND AFTER 1 YEAR OF THERAPY 
+compare_boxplots <- function(vars) {
+  hers_complete_rows %>%
+    pivot_longer(cols=starts_with(vars) ) %>%
+    ggplot() +
+    geom_boxplot(mapping = aes(x=name,y=value)) +
+    facet_wrap(~HT)
+}
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the weight distribution bewteen cohorts."}
+compare_boxplots("weight")
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the BMI distribution bewteen cohorts."}
+compare_boxplots("BMI")
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the glucose distribution bewteen cohorts."}
+compare_boxplots("glucose")
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the Waist to Hip Ratio distribution bewteen cohorts."}
+compare_boxplots("WHR")
+```
+
+```{r, fig.cap= "The figure above is a Boxplot showing the waist distribution bewteen cohorts."}
+compare_boxplots("waist")
+```
+> NOTE:
+>
+> The boxplots for anthropometric measurements- Weight, Body Mass Index (BMI), Fasting glucose (glucose), Waist to Hip ratio (WHR), and Waist circumference (waist) of the test and placebo subjects are similar at baseline and one year into treatment.
+
+```{r, fig.cap= "The figure above is a Boxplot showing the tchol distribution bewteen cohorts."}
+compare_boxplots("tchol")
+```
+- At baseline, the Total Cholesterol (TCHOL) of the test subjects and those on placebo look similar.
+
+- One year into treatment, the Total Cholesterol (TCHOL1) of the test subjects have a lower MEDIAN than the placebo subjects.
+
+- For the test subjects, the MEDIAN value of the Total Cholesterol by one year into treatment (TCHOL1) is lower than it was at the baseline (TCHOL).
+
+```{r, fig.cap= "The figure above is a Boxplot showing the Triglyceride (TG) distribution bewteen cohorts."}
+
+compare_boxplots("TG")
+```
+- At baseline, the Triglycerides (TG) of the test subjects and those on placebo look similar.
+
+- One year into treatment, the Triglycerides (TG1) of the test subjects have a higher MEDIAN than the placebo subjects.
+
+- For the test subjects, the MEDIAN value of Triglycerides by one year into treatment (TG1) is lower than it was at the baseline (TG).
+
+
+```{r, fig.cap= "The figure above is a Boxplot showing the Low Density Lipoporotein (LDL) distribution bewteen cohorts."}
+compare_boxplots("LDL")
+```
+- At baseline, the Low Density Lipoporotein (LDL) of the test subjects and those on placebo look similar.
+
+- One year into treatment, the Low Density Lipoporotein (LDL1) of the test subjects have a higher MEDIAN than the placebo subjects.
+
+- For the test subjects, the MEDIAN value of the Low Density Lipoporotein by one year into treatment (LDL1) is lower than it was at the baseline (LDL).
+
+```{r, fig.cap= "The figure above is a Boxplot showing the High Density Lipoporotein (HDL) distribution between cohorts."}
+compare_boxplots("HDL")
+```
+- At baseline, the High Density Lipoporotein (HDL) of the test subjects and those on placebo look similar.
+
+- One year into treatment, the High Density Lipoporotein (HDL1) of the test subjects have a higher MEDIAN than the placebo subjects.
+
+- For the test subjects, the MEDIAN value of the High Density Lipoporotein by one year into treatment (HDL1) is higher than it was at the baseline (HDL).
+
+```{r statsr}
+# stats test t-test
+vars <- c("weight", "BMI", "WHR", "glucose", "tchol", "HDL", "LDL", "TG")
+```
+
+
+
+# Statistical Analyses
+
+For the purposes of this analysis, we choose to focus on the following variables, comparing them at the baseline and on one year of follow-up. 
+
+**Blood parameters**:
+
+These are the varaibles that best represents the "coronary heart disease" outcome within the provided dataset:
+
+1. TCHOL = Total cholesterol  ($mg/dL$)
+1. HDL = High Density Lipoprotein cholesterol ($mg/dL$)
+1. LDL = Low Density Lipoprotein cholesterol ($mg/dL$)
+1. TG = Triglycerides ($mg/dL$)
+1. Glucose = Fasting glucose ($mg/dL$)
+
+**Anthropometric measurements**:
+
+1. Body Mass Index (BMI) ($kg/m^2$)
+1. Waist circumference ($cm$)
+1. WHR = Waist to hip ratio
+
+##  Independent T-tests between Hormone Therapy and Control Group.
+Our approach was to examine the significant differences found on the blood test parameters at baseline and one year into therapy across the two groups. This means that we tested to see if there was any difference between the baseline values of the hormone therapy and the placebo therapy group, then between the values derived after one year into therapy.
+
+```{r t-test-baseline-one}
+#FUNCTION FOR INDEPENDENT T-TEST BETWEEN HORMONE THERPAY AND PLACEBO GROUPS.
+t.test.b <- function(var, var1) {
+  baseline <- rlang::call2(
+    expr(statsr::inference),
+    enexpr(var),
+    x = expr(HT),
+    data = expr(hers_complete_rows),
+    type = "ht",
+    statistic = "mean",
+    method = "theoretical",
+    alternative = "twosided"
+  )
+  
+  oneyear <- rlang::call2(
+    expr(statsr::inference),
+    enexpr(var1),
+    x = expr(HT),
+    data = expr(hers_complete_rows),   #USING ONLY DATA FROM THE COMPLETE ROWS 
+    type = "ht",
+    statistic = "mean",
+    method = "theoretical",
+    alternative = "twosided"
+  )
+  
+  print(eval(baseline))
+  print(eval(oneyear))
+}
+```
+
+###  Blood Parameters
+
+**Total Cholesterol (tchol, tchol1)**
+
+```{r tchol}
+t.test.b(tchol, tchol1)
+```
+
+**Triglycerides (TG, TG1)**
+
+```{r TG}
+t.test.b(TG, TG1)
+```
+
+**High Density Lipoprotein (HDL)**
+
+```{r HDL}
+t.test.b(HDL, HDL1)
+```
+
+**Low Density Lipoprotein (LDL)**
+
+```{r LDL}
+t.test.b(LDL, LDL1)
+```
+
+
+**Glucose**
+
+```{r glucose}
+t.test.b(glucose, glucose1)
+```
+
+**RESULTS**
+
+Based on the t-test, total cholesterol, triglycerides, HDL, LDL, and fasting glucose levels are not significantly different between treatment and control group at baseline, but there is a significant and statistically proven difference by one year of follow-up.
+
+Mean values of total cholesterol, LDL, and fasting glucose were lower in the hormone therapy group compared to the control group, while HDL and fasting glucose levels were higher in the hormone therapy group compared to the control group.
+
+### Anthropometric Measurements
+
+```{r waist}
+t.test.b(waist, waist1)
+```
+
+```{r WHR}
+t.test.b(WHR, WHR1)
+```
+
+```{r BMI}
+t.test.b(BMI, BMI1)
+```
+
+**RESULTS**
+
+For the anthropometric measurements (measurements and proportions of the body), hormone therapy and control group shows no significant difference both on baseline and follow-up.
+
+##  Independent T-tests on Blood Parameter Changes 
+Here, we further test the significant differences found on the blood test parameters from the first set of t-tests.
+We calculated the rate of change of the variables and did an independent t-test to evaluate whether the rates of change were significantly different between the two groups.
+
+```{r independent-tt}
+# Calculate t-test for the change between values at baseline and 1 year of follow-up
+# between hormone therapy and placebo group
+
+t.test.diff <- function(var1, var2) {
+  val1 <- rlang::call2("$", expr(hers_complete_rows), enexpr(var1))
+  val2 <- rlang::call2("$", expr(hers_complete_rows), enexpr(var2))
+  diff <- (eval(val2) - eval(val1)) / eval(val1)
+  varname <- paste0(rlang::as_string(enexpr(var1)), "_diff")
+  
+  hers_complete_rows[[varname]] <- diff
+  f <- rlang::call2(
+    expr(statsr::inference),
+    sym(varname),
+    x = expr(HT),
+    data = expr(hers_complete_rows),
+    type = "ht",
+    statistic = "mean",
+    method = "theoretical",
+    alternative = "twosided"
+  )
+  eval(f)
+}
+```
+
+```{r tchol-diff}
+t.test.diff(tchol, tchol1)
+```
+
+```{r LDL-diff}
+t.test.diff(LDL, LDL1)
+```
+
+```{r HDL-diff}
+t.test.diff(HDL, HDL1)
+```
+
+```{r TG-diff}
+t.test.diff(TG,TG1)
+```
+
+```{r glucose-diff}
+t.test.diff(glucose, glucose1)
+```
+
+**RESULTS**
+
+After running the independent T-test on blood parameter changes, the following were observed that after one year of treatment:
+
+- The Total Cholesterol levels of the test subjects decreased by 4.5% and decreased by 1.2% for the placebo subjects. The differences were statistically significant (p_value < 0.0001).
+
+
+- The Low Density Lipoporotein levels of the test subjects decreased by 12% and decreased by 1.1% for the placebo subjects. The differences were statistically significant (p_value < 0.0001).
+
+
+- The High Density Lipoporotein levels of the test subjects increased by 10.3% and decreased by approximately 0.8% for the placebo subjects. The differences were statistically significant (p_value < 0.0001).
+
+
+- The Triglycerides levels of the test subjects increased by approximately 14.7% and increased by approximately 6.2% for the placebo subjects. The differences were statistically significant (p_value < 0.0001).
+
+
+- The mean value for the Glucose levels of the test subjects increased by 3.6%  and increased by approximately 6.0% for the placebo subjects. The differences were statistically significant (p_value = 0.0084).
+
+# Discussion
+
+We found that the subjects were evenly distributed by demographics between the two study arms, which was expected from a randomized trial. However (based on our barplots and information from the paper), about 89% of the subjects were white women, which may suggest that this study was not representative of all subjects who may undertake this therapy.
+
+Moreover, we found that the outcome of the measured blood parameters (total cholesterol, HDL, LDL, triglycerides, and glucose) had no difference at baseline but by one year of follow-up, there were significant differences between the two groups. The direction of changes seem to be positive for the hormone therapy group where:
+
+- Total Cholesterol and LDL decreased significantly more in the hormone therapy group
+
+- HDL increased significantly more the hormone therapy group.
+
+- Fating glucose increased significantly less in the hormone therapy group. 
+
+However, the positive changes were not consistent because triglyceride values were seen to increase significantly more in the hormone therapy group.
+
+It is important to note, that we may not conclude the effect of the therapy on coronary heart disease outcomes based solely on this data. These findings suggest that the therapy did not incur any harm on the subjects (based on the blood parameters) by one year of follow-up and may allow the study to progress. The effect of the therapy on coronary heart disease outcomes shall be made based on follow-up observations, with variable recording coronary heart disease events on the subjects.
+
+# Conclusion
+
+To conclude we need to consider, the findings of our analysis, the study's goal, and our dataset's limitation(s).
+
+> **Based on our findings**:
+> The cardiovascular markers that we focused on show _increases_ and _decreases_ which are clinically good and bad.
+>
+> **Considering the study’s goal**:
+> To measure coronary heart disease outcomes for menopausal women who took the hormone therapy. 
+>
+> **In view of our dataset limitation(s)**:  
+> Dataset of only 1/5 year follow-up, no Diastolic and Systolic Blood Pressure measurements to complement the blood test parameters after 1 year of therapy, and no defined case outcome.
+
+
+Based on these factors, our study cannot make a conclusion on the coronary health implication of using the estrogen/progestin therapy.
+
+However, we project that if these outcomes are consistent throughout the 5-year observation period, there may be a need to consider the opportunity forgone (eg., severity of CHD condition and other health risks per case) in order to make a decision on the drug effect.
+
+
+**According to the [paper](https://doi.org/10.1001/jama.280.7.605)**:
+
+- They recorded that after 5 years of therapy and monitoring, there was no overall cardiovascular benefit but there was a pattern of early increase in risk of CHD events.
+
+- They also mentioned that not all subjects completed the 5-year therapy and there were some recorded deaths.
+
+- They did not recommend starting this treatment for the purpose of secondary prevention of CHD. 
+
+- However, they declared that given the favorable pattern of Coronary Heart Disease (CHD) events after several years of therapy, it could be appropriate for women already receiving hormone treatment to continue.
+
+
+# Reference
+
+- Hulley, S., Grady, D., Bush, T., Furberg, C., Herrington, D., Riggs, B., & Vittinghoff, E. (1998). Randomized trial of estrogen plus progestin for secondary prevention of coronary heart disease in postmenopausal women. Heart and Estrogen/progestin Replacement Study (HERS) Research Group. JAMA, 280(7), 605–613. https://doi.org/10.1001/jama.280.7.605
+<!--
+# Code and tables
+
+## Syntax highlighting
+
+Here is a sample code chunk, just to show that syntax highlighting works as
+expected.
+
+```{r sh, echo=TRUE, eval=TRUE}
+say_hello <- function (name) {
+  paste("Hello,", name, "!")
+}
+
+say_hello("world")
+```
+
+## Verbatim
+
+Here is the structure of the `penguins` dataset.
+
+```{r penguins_str, echo=TRUE}
+library(palmerpenguins)
+str(penguins)
+```
+
+## Table
+
+Sample table output.
+
+```{r table}
+tab <- table(penguins$island, penguins$species)
+kable(tab)
+```
+
+Sample `DT:datatable` output.
+
+```{r dt}
+library(DT)
+DT::datatable(penguins)
+```
+
+Here is a crosstab displayed in several different ways with a "pills" interface.
+To do this, just pass your `table()` result to the `pilltabs()` function.
+
+```{r pilltabs, results="asis"}
+#tab <- table(penguins$sex, penguins$species)
+# pilltabs(tab)
+
+```
+
+# Styling
+
+A simple list :
+
+-   one mississipi
+-   two mississipi
+-   three mississipi
+
+A blockquote :
+
+> Oh ! What a nice blockquote you have here. Much more wonderful than a classical
+> Lorem Ipsum, really.
+
+And we could also [include links](https://www.r-project.org/) or simply URLs like
+this : <https://www.r-project.org/>
+
+An incredibly complex equation :
+
+$$ y = \sqrt{\frac{1}{x + \beta}} $$
+
+# Figures
+
+Here is an histogram.
+
+```{r hist}
+library(ggplot2)
+ggplot(data = penguins) +
+    geom_histogram(aes(x = body_mass_g)) +
+    facet_grid(species~.)
+
+```
+
+And a wonderful scatterplot, with a caption.
+
+```{r scatter, fig.cap="This is a scatterplot"}
+ggplot(data = penguins) + 
+  geom_point(aes(x = bill_length_mm, y = bill_depth_mm))
+```
+-->
